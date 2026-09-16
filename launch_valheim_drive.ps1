@@ -78,6 +78,19 @@ function Write-NewServerOutput {
     }
 }
 
+function Stop-LauncherProcessTree {
+    param([Parameter(Mandatory)][int]$ProcessId)
+    $children = @(Get-CimInstance Win32_Process -Filter "ParentProcessId = $ProcessId" -ErrorAction SilentlyContinue)
+    foreach ($child in $children) {
+        Stop-LauncherProcessTree -ProcessId ([int]$child.ProcessId)
+    }
+    $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
+    if ($null -ne $process) {
+        Stop-Process -Id $ProcessId -Force -ErrorAction SilentlyContinue
+        Write-DriveLog "Proceso del lanzador finalizado: PID $ProcessId."
+    }
+}
+
 function Save-DriveConfig {
     [ordered]@{
         DriveFolder = $DriveFolder
@@ -850,7 +863,24 @@ namespace DriveLauncher {
             }
         }
     })
-    $form.Add_FormClosing({ $timer.Stop() })
+    $form.Add_FormClosing({
+        $timer.Stop()
+        if ($script:ChildProcessId -and (Get-Process -Id $script:ChildProcessId -ErrorAction SilentlyContinue)) {
+            $closeSession = [Windows.Forms.MessageBox]::Show(
+                "Hay una operacion en curso. Si cierras ahora se detendran sus procesos y puede quedar una copia incompleta. Continuar?",
+                "Operacion en curso",
+                "YesNo",
+                "Warning"
+            )
+            if ($closeSession -eq [Windows.Forms.DialogResult]::No) {
+                $_.Cancel = $true
+                $timer.Start()
+                return
+            }
+            Stop-LauncherProcessTree -ProcessId $script:ChildProcessId
+            $script:ChildProcessId = $null
+        }
+    })
     $form.Add_Shown({
         $refreshWorlds.PerformClick()
     })
