@@ -61,9 +61,14 @@ Para usuarios que no quieran configurar rclone, ejecuta:
 Instala Google Drive para escritorio, inicia sesion y marca la carpeta
 compartida como disponible sin conexion. La carpeta puede estar en una unidad
 montada como `G:\` o en cualquier otra ruta local sincronizada. En la interfaz
-pulsa **Choose folder** y selecciona la carpeta local sincronizada. Todos los jugadores deben elegir
-la misma carpeta compartida, usar el mismo nombre de mundo y pulsar **Test
-folder** antes de iniciar.
+pulsa **Choose folder** y selecciona la carpeta local sincronizada. Todos los
+jugadores deben elegir la misma carpeta compartida. **Refresh worlds** muestra
+los mundos locales y compartidos; tambien puedes escribir un nombre nuevo.
+**Upload world** permite subir una copia sin iniciar el servidor. **Start
+server** carga la partida, ejecuta el dedicated server y sube los archivos al
+cerrarse. Si el mundo no existe, el servidor puede crearlo y el programa
+detectara los archivos nuevos al terminar. Pulsa **Test folder** antes de
+iniciar.
 
 Este modo usa la carpeta local de Google Drive para leer y escribir archivos.
 Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. Al
