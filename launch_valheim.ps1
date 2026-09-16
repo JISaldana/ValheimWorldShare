@@ -3,7 +3,7 @@ param(
     [switch]$NoGui,
     [string]$Remote = "gdrive:",
     [string]$WorldName = "Dedicated",
-    [string]$ServerExecutable = "$env:ProgramFiles(x86)\Steam\steamapps\common\Valheim dedicated server\valheim_server.exe",
+    [string]$ServerExecutable = "${env:ProgramFiles(x86)}\Steam\steamapps\common\Valheim dedicated server\valheim_server.exe",
     [string]$WorldDirectory = "$env:USERPROFILE\AppData\LocalLow\IronGate\Valheim\worlds_local",
     [string]$RclonePath = "$PSScriptRoot\.tools\rclone.exe",
     [int]$NetworkTimeoutSeconds = 60,

@@ -68,7 +68,8 @@ los mundos locales y compartidos; tambien puedes escribir un nombre nuevo.
 server** carga la partida, ejecuta el dedicated server y sube los archivos al
 cerrarse. Si el mundo no existe, el servidor puede crearlo y el programa
 detectara los archivos nuevos al terminar. Pulsa **Test folder** antes de
-iniciar.
+iniciar. Usa **Choose server** para seleccionar `valheim_server.exe`; la ruta
+queda guardada para futuras ejecuciones.
 
 Este modo usa la carpeta local de Google Drive para leer y escribir archivos.
 Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. Al
