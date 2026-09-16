@@ -9,7 +9,8 @@ param(
     [string]$SessionLogPath = "",
     [string]$ServerName = "Valheim World Share",
     [string]$ServerPassword = "valheim",
-    [int]$ServerPort = 2456
+    [int]$ServerPort = 2456,
+    [bool]$Crossplay = $true
 )
 
 Set-StrictMode -Version Latest
@@ -231,6 +232,12 @@ function Get-AvailableWorldNames {
 
 function Start-DriveSession {
     Test-DriveFolder | Out-Null
+    if ($ServerPassword.Length -lt 5) {
+        throw "La password debe tener al menos 5 caracteres."
+    }
+    if ($ServerName -like "*$ServerPassword*") {
+        throw "La password no puede estar contenida en el nombre del servidor."
+    }
     $detectedServer = Find-ServerExecutable
     if ($null -eq $detectedServer) {
         throw "No se encontro valheim_server.exe. Usa Choose server para seleccionarlo."
@@ -245,14 +252,22 @@ function Start-DriveSession {
     New-SharedLock
     $serverProcess = $null
     $sessionStarted = $false
+    $previousSteamAppId = $env:SteamAppId
     try {
         Write-DriveLog "Iniciando Valheim para el mundo $WorldName."
         $serverOutputLog = "$script:ChildLogPath.server.out.txt"
         $serverErrorLog = "$script:ChildLogPath.server.err.txt"
-        $serverProcess = Start-Process -FilePath $ServerExecutable -ArgumentList @(
+        $env:SteamAppId = "892970"
+        $serverArguments = @(
             "-nographics", "-batchmode", "-name", $ServerName, "-port", $ServerPort,
             "-world", $WorldName, "-password", $ServerPassword, "-public", "0"
-        ) -WorkingDirectory (Split-Path -Parent $ServerExecutable) -RedirectStandardOutput $serverOutputLog -RedirectStandardError $serverErrorLog -PassThru
+        )
+        if ($Crossplay) {
+            $serverArguments += "-crossplay"
+        }
+        $serverProcess = Start-Process -FilePath $ServerExecutable -ArgumentList $serverArguments `
+            -WorkingDirectory (Split-Path -Parent $ServerExecutable) `
+            -RedirectStandardOutput $serverOutputLog -RedirectStandardError $serverErrorLog -PassThru
         $sessionStarted = $true
         Wait-Process -Id $serverProcess.Id
         if (Test-Path -LiteralPath $serverOutputLog) {
@@ -269,6 +284,11 @@ function Start-DriveSession {
         }
         Upload-WorldToDrive
     } finally {
+        if ($null -eq $previousSteamAppId) {
+            Remove-Item Env:SteamAppId -ErrorAction SilentlyContinue
+        } else {
+            $env:SteamAppId = $previousSteamAppId
+        }
         if ($null -ne $serverProcess -and -not $serverProcess.HasExited) {
             Stop-Process -Id $serverProcess.Id
         }
@@ -493,7 +513,7 @@ function Start-DriveGui {
             $choose.Enabled = $false
             $test.Enabled = $false
             $script:ChildLogPath = Join-Path $PSScriptRoot "logs\drive-session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
-            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$ServerName`" -ServerPassword `"$ServerPassword`" -ServerPort $ServerPort"
+            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$ServerName`" -ServerPassword `"$ServerPassword`" -ServerPort $ServerPort -Crossplay:`$true"
             $script:ChildProcessId = (Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru).Id
             $status.Text = "Sync and server session running."
             $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)

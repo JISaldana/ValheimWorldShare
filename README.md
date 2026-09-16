@@ -76,6 +76,12 @@ iniciar. Usa **Choose server** para seleccionar `valheim_server.exe`; la ruta
 queda guardada para futuras ejecuciones. Si el servidor termina de inmediato,
 revisa los archivos `*.server.out.txt` y `*.server.err.txt` dentro de `logs/`.
 
+El lanzador usa por defecto los mismos parametros del archivo oficial
+`start_headless_server.bat`: `SteamAppId=892970` y `-crossplay`. La password
+debe tener al menos 5 caracteres y los puertos `2456-2458` deben estar
+permitidos por el firewall/router si otros jugadores se conectaran desde
+internet.
+
 Este modo usa la carpeta local de Google Drive para leer y escribir archivos.
 Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. Al
 terminar, verifica los hashes de los archivos copiados y avisa cuando la copia
