@@ -49,3 +49,22 @@ archivo: la autenticacion de Google Drive es personal.
 
 Todos los textos generados durante la ejecucion usan caracteres ASCII para
 evitar problemas de lectura en consolas antiguas.
+
+## Google Drive para escritorio
+
+Para usuarios que no quieran configurar rclone, ejecuta:
+
+```powershell
+.\launch_valheim_drive.ps1
+```
+
+Instala Google Drive para escritorio, inicia sesion y marca la carpeta
+compartida como disponible sin conexion. En la interfaz pulsa **Choose folder**
+y selecciona la carpeta local sincronizada. Todos los jugadores deben elegir
+la misma carpeta compartida, usar el mismo nombre de mundo y pulsar **Test
+folder** antes de iniciar.
+
+Este modo usa la carpeta local de Google Drive para leer y escribir archivos.
+Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. El
+modo rclone permanece disponible en `launch_valheim.ps1` y no comparte codigo
+de configuracion con este modo.
