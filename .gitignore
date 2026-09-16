@@ -1,0 +1,14 @@
+# Herramientas descargadas y configuración local
+.tools/
+
+# Logs y copias de seguridad de mundos
+logs/
+backups/
+*.bak
+*.db
+*.fwl
+
+# Datos locales de PowerShell y del editor
+.DS_Store
+*.user
+*.suo
