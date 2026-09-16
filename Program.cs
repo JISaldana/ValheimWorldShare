@@ -26,7 +26,8 @@ internal static class Program
                 FileName = "powershell.exe",
                 Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + scriptPath + "\"",
                 WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory,
-                UseShellExecute = false
+                UseShellExecute = true,
+                Verb = "open"
             });
             if (process is null)
             {
