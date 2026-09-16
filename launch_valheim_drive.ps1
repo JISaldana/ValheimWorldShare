@@ -499,6 +499,21 @@ function Start-DriveUpload {
 function Start-DriveGui {
     Add-Type -AssemblyName System.Windows.Forms
     Add-Type -AssemblyName System.Drawing
+    if (-not ("DriveLauncher.ConsoleWindow" -as [type])) {
+        Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+namespace DriveLauncher {
+    public static class ConsoleWindow {
+        [DllImport("kernel32.dll")]
+        public static extern IntPtr GetConsoleWindow();
+        [DllImport("user32.dll")]
+        public static extern bool ShowWindow(IntPtr handle, int command);
+    }
+}
+"@
+    }
+    [DriveLauncher.ConsoleWindow]::ShowWindow([DriveLauncher.ConsoleWindow]::GetConsoleWindow(), 0) | Out-Null
     [Windows.Forms.Application]::EnableVisualStyles()
 
     $form = New-Object Windows.Forms.Form
@@ -533,8 +548,8 @@ function Start-DriveGui {
     $settings.Padding = New-Object Windows.Forms.Padding(16, 10, 16, 4)
     $settings.ColumnCount = 2
     $settings.RowCount = 2
-    $settings.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 150)))
-    $settings.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Percent, 100)))
+    [void]$settings.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 150)))
+    [void]$settings.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Percent, 100)))
     $folderBox = New-Object Windows.Forms.TextBox
     $folderBox.Text = $DriveFolder
     $folderBox.Dock = "Fill"
