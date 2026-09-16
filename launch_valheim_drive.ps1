@@ -598,6 +598,7 @@ function Start-DriveGui {
             $status.Text = "Folder is ready."
             $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
         } catch {
+            Write-DriveLog "GUI test error: $($_.Exception.Message)"
             $status.Text = "Folder is not available."
             $status.BackColor = [Drawing.Color]::FromArgb(239, 68, 68)
             [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Folder error", "OK", "Error") | Out-Null
@@ -605,7 +606,9 @@ function Start-DriveGui {
     })
     $start.Add_Click({
         try {
+            Write-DriveLog "GUI start requested for world '$($worldBox.Text)'."
             if (-not (Request-ServerSettings -Owner $form)) {
+                Write-DriveLog "GUI start cancelled or server settings invalid."
                 return
             }
             $script:DriveFolder = $folderBox.Text.Trim()
@@ -613,6 +616,7 @@ function Start-DriveGui {
             $script:ServerExecutable = Find-ServerExecutable
             if ($null -eq $script:ServerExecutable) {
                 [Windows.Forms.MessageBox]::Show("Server executable not found. Use Choose server first.", "Server not found", "OK", "Warning") | Out-Null
+                Write-DriveLog "GUI start blocked: server executable not found."
                 return
             }
             Test-DriveFolder | Out-Null
@@ -624,10 +628,12 @@ function Start-DriveGui {
             $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$script:ServerName`" -ServerPassword `"$script:ServerPassword`" -ServerPort $script:ServerPort -Crossplay:`$true"
             $script:ChildProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru
             $script:ChildProcessId = $script:ChildProcess.Id
+            Write-DriveLog "GUI child session started with PID $($script:ChildProcessId)."
             $status.Text = "Sync and server session running."
             $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
             $timer.Start()
         } catch {
+            Write-DriveLog "GUI start error: $($_.Exception.Message)"
             $start.Enabled = $true
             [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Start error", "OK", "Error") | Out-Null
         }
@@ -647,6 +653,7 @@ function Start-DriveGui {
     })
     $upload.Add_Click({
         try {
+            Write-DriveLog "GUI upload requested for world '$($worldBox.Text)'."
             $script:DriveFolder = $folderBox.Text.Trim()
             $script:WorldName = $worldBox.Text.Trim()
             Test-DriveFolder | Out-Null
@@ -663,10 +670,12 @@ function Start-DriveGui {
             $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -UploadOnly"
             $script:ChildProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru
             $script:ChildProcessId = $script:ChildProcess.Id
+            Write-DriveLog "GUI upload child started with PID $($script:ChildProcessId)."
             $status.Text = "Uploading and verifying world files."
             $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
             $timer.Start()
         } catch {
+            Write-DriveLog "GUI upload error: $($_.Exception.Message)"
             $upload.Enabled = $true
             $start.Enabled = $true
             [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Upload error", "OK", "Error") | Out-Null
@@ -698,6 +707,7 @@ function Start-DriveGui {
 }
 
 try {
+    Write-DriveLog "Launcher started. GUI=$(-not $NoGui) UploadOnly=$UploadOnly"
     if ($NoGui) {
         if ($UploadOnly) {
             Start-DriveUpload *>&1 | Tee-Object -FilePath $script:ChildLogPath -Append
