@@ -85,19 +85,19 @@ function Test-DriveFolder {
     return (Resolve-Path -LiteralPath $DriveFolder).Path
 }
 
-function Get-WorldFiles {
+function Get-LocalWorldDirectory {
     param([switch]$AllowMissing)
     if (-not (Test-Path -LiteralPath $WorldDirectory -PathType Container)) {
         throw "No existe la carpeta local de mundos: $WorldDirectory"
     }
-    $files = @()
-    foreach ($extension in @("*.db", "*.fwl")) {
-        $files += Get-ChildItem -LiteralPath $WorldDirectory -Filter "$WorldName$extension" -File -ErrorAction SilentlyContinue
+    $worldPath = Join-Path $WorldDirectory $WorldName
+    if (Test-Path -LiteralPath $worldPath -PathType Container) {
+        return (Resolve-Path -LiteralPath $worldPath).Path
     }
-    if (-not $AllowMissing -and $files.Count -eq 0) {
-        throw "No se encontraron archivos del mundo '$WorldName'."
+    if ($AllowMissing) {
+        return $worldPath
     }
-    return $files
+    throw "No se encontro la carpeta del mundo '$WorldName'."
 }
 
 function Get-SharedWorldDirectory {
@@ -183,48 +183,52 @@ function Sync-WorldFromDrive {
     $sharedWorld = Get-SharedWorldDirectory
     $backupDirectory = Join-Path $WorldDirectory "backups"
     New-Item -ItemType Directory -Path $backupDirectory -Force | Out-Null
-    $localFiles = @(Get-WorldFiles -AllowMissing)
-    $sharedFiles = @(Get-ChildItem -LiteralPath $sharedWorld -File -Include "$WorldName.db", "$WorldName.fwl" -ErrorAction SilentlyContinue)
-    $fileNames = @($localFiles.Name) + @($sharedFiles.Name) | Select-Object -Unique
-    foreach ($fileName in $fileNames) {
-        $localFile = Join-Path $WorldDirectory $fileName
-        $sharedFile = Join-Path $sharedWorld $fileName
-        if (-not (Test-Path -LiteralPath $sharedFile -PathType Leaf)) {
-            continue
-        }
-        $remoteFile = Get-Item -LiteralPath $sharedFile
-        $localExists = Test-Path -LiteralPath $localFile -PathType Leaf
-        if (-not $localExists -or $remoteFile.LastWriteTimeUtc -gt (Get-Item -LiteralPath $localFile).LastWriteTimeUtc) {
-            if ($localExists) {
-                Copy-Item -LiteralPath $localFile -Destination (Join-Path $backupDirectory "$fileName.bak") -Force
-            }
-            Copy-AndVerifyFile -Source $sharedFile -Destination $localFile
-            Write-DriveLog "Copia local verificada desde la carpeta sincronizada: $fileName."
-        }
+    $localWorld = Get-LocalWorldDirectory -AllowMissing
+    if (-not (Test-Path -LiteralPath $sharedWorld -PathType Container)) {
+        return
+    }
+    if (Test-Path -LiteralPath $localWorld -PathType Container) {
+        $backupPath = Join-Path $backupDirectory "$WorldName-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss'))"
+        Copy-Item -LiteralPath $localWorld -Destination $backupPath -Recurse -Force
+    } else {
+        New-Item -ItemType Directory -Path $localWorld -Force | Out-Null
+    }
+    Copy-AndVerifyDirectory -Source $sharedWorld -Destination $localWorld
+    Write-DriveLog "Carpeta completa del mundo descargada y verificada: $WorldName."
+}
+
+function Copy-AndVerifyDirectory {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Destination
+    )
+    New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+    Get-ChildItem -LiteralPath $Source -File -Recurse | ForEach-Object {
+        $relative = $_.FullName.Substring($Source.Length).TrimStart('\')
+        $target = Join-Path $Destination $relative
+        New-Item -ItemType Directory -Path (Split-Path -Parent $target) -Force | Out-Null
+        Copy-AndVerifyFile -Source $_.FullName -Destination $target
     }
 }
 
 function Upload-WorldToDrive {
     $sharedWorld = Get-SharedWorldDirectory
-    foreach ($localFile in Get-WorldFiles) {
-        $sharedFile = Join-Path $sharedWorld $localFile.Name
-        Copy-AndVerifyFile -Source $localFile.FullName -Destination $sharedFile
-        Write-DriveLog "Copia local verificada: $($localFile.Name)."
-    }
+    $localWorld = Get-LocalWorldDirectory
+    Copy-AndVerifyDirectory -Source $localWorld -Destination $sharedWorld
+    Write-DriveLog "Carpeta completa del mundo copiada y verificada: $WorldName."
     Write-DriveLog "Archivos copiados. Revisa el estado de sincronizacion antes de liberar el bloqueo."
 }
 
 function Get-AvailableWorldNames {
     $names = @()
     if (Test-Path -LiteralPath $WorldDirectory -PathType Container) {
-        $names += Get-ChildItem -LiteralPath $WorldDirectory -Filter "*.db" -File |
-            Where-Object { Test-Path -LiteralPath (Join-Path $WorldDirectory "$($_.BaseName).fwl") } |
-            ForEach-Object { $_.BaseName }
+        $names += Get-ChildItem -LiteralPath $WorldDirectory -Directory |
+            Where-Object { $_.Name -ne "backups" -and (Get-ChildItem -LiteralPath $_.FullName -File -ErrorAction SilentlyContinue) } |
+            ForEach-Object { $_.Name }
     }
     if (Test-Path -LiteralPath $DriveFolder -PathType Container) {
         $names += Get-ChildItem -LiteralPath $DriveFolder -Directory -ErrorAction SilentlyContinue |
-            Where-Object { (Test-Path -LiteralPath (Join-Path $_.FullName "$($_.Name).db")) -and
-                (Test-Path -LiteralPath (Join-Path $_.FullName "$($_.Name).fwl")) } |
+            Where-Object { $_.Name -ne "backups" -and (Get-ChildItem -LiteralPath $_.FullName -File -ErrorAction SilentlyContinue) } |
             ForEach-Object { $_.Name }
     }
     return @($names | Sort-Object -Unique)
@@ -620,9 +624,7 @@ function Start-DriveGui {
             $script:DriveFolder = $folderBox.Text.Trim()
             $script:WorldName = $worldBox.Text.Trim()
             Test-DriveFolder | Out-Null
-            if (@(Get-WorldFiles).Count -eq 0) {
-                throw "No local files exist for this world."
-            }
+            Get-LocalWorldDirectory | Out-Null
             Save-DriveConfig
             $upload.Enabled = $false
             $start.Enabled = $false

@@ -67,7 +67,7 @@ compartida como disponible sin conexion. La carpeta puede estar en una unidad
 montada como `G:\` o en cualquier otra ruta local sincronizada. En la interfaz
 pulsa **Choose folder** y selecciona la carpeta local sincronizada. Todos los
 jugadores deben elegir la misma carpeta compartida. **Refresh worlds** muestra
-los mundos locales y compartidos; tambien puedes escribir un nombre nuevo.
+los mundos locales y compartidos como carpetas completas; tambien puedes escribir un nombre nuevo.
 **Upload world** permite subir una copia sin iniciar el servidor. **Start
 server** carga la partida, ejecuta el dedicated server y sube los archivos al
 cerrarse. Si el mundo no existe, el servidor puede crearlo y el programa
@@ -82,7 +82,9 @@ debe tener al menos 5 caracteres y los puertos `2456-2458` deben estar
 permitidos por el firewall/router si otros jugadores se conectaran desde
 internet.
 
-Este modo usa la carpeta local de Google Drive para leer y escribir archivos.
+Este modo usa la carpeta local de Google Drive para leer y escribir la carpeta
+completa del mundo, incluidos chunks, bases de datos, metadatos y archivos
+auxiliares.
 Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. Al
 terminar, verifica los hashes de los archivos copiados y avisa cuando la copia
 local esta completa. Como una carpeta generica no permite saber si Dropbox,
