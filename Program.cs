@@ -21,7 +21,7 @@ internal static class Program
 
         try
         {
-            using (Process process = Process.Start(new ProcessStartInfo
+            Process? process = Process.Start(new ProcessStartInfo
             {
                 FileName = "powershell.exe",
                 Arguments = "-NoProfile -ExecutionPolicy Bypass -File \"" + scriptPath + "\"",
@@ -29,7 +29,12 @@ internal static class Program
                 UseShellExecute = false,
                 CreateNoWindow = true,
                 WindowStyle = ProcessWindowStyle.Hidden
-            }))
+            });
+            if (process is null)
+            {
+                throw new InvalidOperationException("No se pudo iniciar PowerShell.");
+            }
+            using (process)
             {
                 process.WaitForExit();
             }
