@@ -51,11 +51,7 @@ function Test-DriveFolder {
     if (-not (Test-Path -LiteralPath $DriveFolder -PathType Container)) {
         throw "La carpeta no existe o Google Drive no esta conectado: $DriveFolder"
     }
-    $root = (Resolve-Path -LiteralPath $DriveFolder).Path
-    if ($root -notmatch "Google Drive|GoogleDrive") {
-        Write-DriveLog "ADVERTENCIA: la carpeta no parece estar dentro de Google Drive."
-    }
-    return $root
+    return (Resolve-Path -LiteralPath $DriveFolder).Path
 }
 
 function Get-WorldFiles {

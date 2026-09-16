@@ -59,8 +59,9 @@ Para usuarios que no quieran configurar rclone, ejecuta:
 ```
 
 Instala Google Drive para escritorio, inicia sesion y marca la carpeta
-compartida como disponible sin conexion. En la interfaz pulsa **Choose folder**
-y selecciona la carpeta local sincronizada. Todos los jugadores deben elegir
+compartida como disponible sin conexion. La carpeta puede estar en una unidad
+montada como `G:\` o en cualquier otra ruta local sincronizada. En la interfaz
+pulsa **Choose folder** y selecciona la carpeta local sincronizada. Todos los jugadores deben elegir
 la misma carpeta compartida, usar el mismo nombre de mundo y pulsar **Test
 folder** antes de iniciar.
 
