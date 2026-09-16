@@ -83,6 +83,50 @@ function Get-SharedLock {
     return $null
 }
 
+function Wait-FileStable {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [int]$StableSeconds = 3,
+        [int]$TimeoutSeconds = 60
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSeconds)
+    $lastSignature = $null
+    $stableSince = $null
+    while ((Get-Date) -lt $deadline) {
+        if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+            throw "El archivo no esta disponible: $Path"
+        }
+        $item = Get-Item -LiteralPath $Path
+        $signature = "$($item.Length)|$($item.LastWriteTimeUtc.Ticks)"
+        if ($signature -eq $lastSignature) {
+            if ($null -eq $stableSince) { $stableSince = Get-Date }
+            if (((Get-Date) - $stableSince).TotalSeconds -ge $StableSeconds) {
+                return
+            }
+        } else {
+            $lastSignature = $signature
+            $stableSince = Get-Date
+        }
+        Start-Sleep -Seconds 1
+    }
+    throw "El archivo sigue cambiando y no se puede copiar con seguridad: $Path"
+}
+
+function Copy-AndVerifyFile {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Destination
+    )
+    Wait-FileStable -Path $Source
+    Copy-Item -LiteralPath $Source -Destination $Destination -Force
+    Wait-FileStable -Path $Destination
+    $sourceHash = (Get-FileHash -LiteralPath $Source -Algorithm SHA256).Hash
+    $destinationHash = (Get-FileHash -LiteralPath $Destination -Algorithm SHA256).Hash
+    if ($sourceHash -ne $destinationHash) {
+        throw "La verificacion fallo para $([IO.Path]::GetFileName($Source))."
+    }
+}
+
 function New-SharedLock {
     $root = Test-DriveFolder
     $lockPath = Join-Path $root $script:LockName
@@ -115,8 +159,8 @@ function Sync-WorldFromDrive {
         $remoteFile = Get-Item -LiteralPath $sharedFile
         if ($remoteFile.LastWriteTimeUtc -gt $localFile.LastWriteTimeUtc) {
             Copy-Item -LiteralPath $localFile.FullName -Destination (Join-Path $backupDirectory "$($localFile.Name).bak") -Force
-            Copy-Item -LiteralPath $sharedFile -Destination $localFile.FullName -Force
-            Write-DriveLog "Descargado $($localFile.Name) desde Google Drive."
+            Copy-AndVerifyFile -Source $sharedFile -Destination $localFile.FullName
+            Write-DriveLog "Copia local verificada desde la carpeta sincronizada: $($localFile.Name)."
         }
     }
 }
@@ -141,14 +185,16 @@ function Start-DriveSession {
         Wait-Process -Id $serverProcess.Id
         $sharedWorld = Get-SharedWorldDirectory
         foreach ($localFile in Get-WorldFiles) {
-            Copy-Item -LiteralPath $localFile.FullName -Destination (Join-Path $sharedWorld $localFile.Name) -Force
-            Write-DriveLog "Subido $($localFile.Name) a Google Drive."
+            $sharedFile = Join-Path $sharedWorld $localFile.Name
+            Copy-AndVerifyFile -Source $localFile.FullName -Destination $sharedFile
+            Write-DriveLog "Copia local verificada: $($localFile.Name)."
         }
+        Write-DriveLog "Archivos copiados a la carpeta sincronizada. Espera la confirmacion de tu proveedor antes de cerrar el programa."
     } finally {
         if ($null -ne $serverProcess -and -not $serverProcess.HasExited) {
             Stop-Process -Id $serverProcess.Id
         }
-        Remove-SharedLock
+        Write-DriveLog "El bloqueo permanece activo hasta confirmar la sincronizacion en la nube."
     }
 }
 
@@ -255,9 +301,16 @@ function Start-DriveGui {
         }
         if ($script:ChildProcessId -and $null -eq (Get-Process -Id $script:ChildProcessId -ErrorAction SilentlyContinue)) {
             $timer.Stop()
-            $start.Enabled = $true
-            $status.Text = "Session finished."
+            $start.Enabled = $false
+            $release.Enabled = $true
+            $status.Text = "Local copy verified. Check cloud sync status."
             $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
+            [Windows.Forms.MessageBox]::Show(
+                "The files were copied and verified locally. Check your sync provider icon before another player starts.",
+                "Local copy complete",
+                "OK",
+                "Information"
+            ) | Out-Null
         }
     })
     $choose.Add_Click({
@@ -310,6 +363,8 @@ function Start-DriveGui {
             try {
                 $script:DriveFolder = $folderBox.Text.Trim()
                 Remove-SharedLock
+                $start.Enabled = $true
+                $release.Enabled = $true
                 $status.Text = "Shared lock removed."
                 $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
             } catch {

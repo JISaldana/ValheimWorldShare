@@ -66,6 +66,12 @@ la misma carpeta compartida, usar el mismo nombre de mundo y pulsar **Test
 folder** antes de iniciar.
 
 Este modo usa la carpeta local de Google Drive para leer y escribir archivos.
-Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. El
-modo rclone permanece disponible en `launch_valheim.ps1` y no comparte codigo
-de configuracion con este modo.
+Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. Al
+terminar, verifica los hashes de los archivos copiados y avisa cuando la copia
+local esta completa. Como una carpeta generica no permite saber si Dropbox,
+Google Drive u otro proveedor termino la subida remota, el bloqueo permanece
+activo. Revisa el icono de sincronizacion del proveedor y pulsa **Release lock**
+solo cuando indique que todo esta sincronizado.
+
+El modo rclone permanece disponible en `launch_valheim.ps1` y no comparte
+codigo de configuracion con este modo.
