@@ -35,6 +35,7 @@ $script:LockName = "server.lock"
 $script:ServerExecutable = $ServerExecutable
 $script:LogPath = Join-Path $PSScriptRoot "logs\drive-launcher.log"
 $script:ChildProcessId = $null
+$script:ChildProcess = $null
 $script:ChildLogPath = if ($SessionLogPath) { $SessionLogPath } else {
     Join-Path $PSScriptRoot "logs\drive-session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
 }
@@ -513,16 +514,40 @@ function Start-DriveGui {
         }
         if ($script:ChildProcessId -and $null -eq (Get-Process -Id $script:ChildProcessId -ErrorAction SilentlyContinue)) {
             $timer.Stop()
-            $start.Enabled = $false
-            $release.Enabled = $true
-            $status.Text = "Local copy verified. Check cloud sync status."
-            $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
-            [Windows.Forms.MessageBox]::Show(
-                "The files were copied and verified locally. Check your sync provider icon before another player starts.",
-                "Local copy complete",
-                "OK",
-                "Information"
-            ) | Out-Null
+            $logText = if (Test-Path -LiteralPath $script:ChildLogPath) {
+                Get-Content -LiteralPath $script:ChildLogPath -Raw -ErrorAction SilentlyContinue
+            } else { "" }
+            $successful = $logText -match "Carpeta completa del mundo copiada y verificada"
+            $failed = $logText -match "ERROR:"
+            $start.Enabled = $true
+            $upload.Enabled = $true
+            $choose.Enabled = $true
+            $test.Enabled = $true
+            $refreshWorlds.Enabled = $true
+            $chooseServer.Enabled = $true
+            $create.Enabled = $true
+            if ($successful -and -not $failed) {
+                $start.Enabled = $false
+                $release.Enabled = $true
+                $status.Text = "Local copy verified. Check cloud sync status."
+                $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
+                [Windows.Forms.MessageBox]::Show(
+                    "The files were copied and verified locally. Check your sync provider icon before another player starts.",
+                    "Local copy complete",
+                    "OK",
+                    "Information"
+                ) | Out-Null
+            } else {
+                $release.Enabled = $false
+                $status.Text = "The session failed. Check the event log."
+                $status.BackColor = [Drawing.Color]::FromArgb(239, 68, 68)
+                [Windows.Forms.MessageBox]::Show(
+                    "The server did not complete successfully. Check the event log for the exact error.",
+                    "Server start failed",
+                    "OK",
+                    "Error"
+                ) | Out-Null
+            }
         }
     })
     $choose.Add_Click({
@@ -597,7 +622,8 @@ function Start-DriveGui {
             $test.Enabled = $false
             $script:ChildLogPath = Join-Path $PSScriptRoot "logs\drive-session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
             $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$script:ServerName`" -ServerPassword `"$script:ServerPassword`" -ServerPort $script:ServerPort -Crossplay:`$true"
-            $script:ChildProcessId = (Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru).Id
+            $script:ChildProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru
+            $script:ChildProcessId = $script:ChildProcess.Id
             $status.Text = "Sync and server session running."
             $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
             $timer.Start()
@@ -635,7 +661,8 @@ function Start-DriveGui {
             $create.Enabled = $false
             $script:ChildLogPath = Join-Path $PSScriptRoot "logs\drive-upload-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
             $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -UploadOnly"
-            $script:ChildProcessId = (Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru).Id
+            $script:ChildProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru
+            $script:ChildProcessId = $script:ChildProcess.Id
             $status.Text = "Uploading and verifying world files."
             $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
             $timer.Start()
