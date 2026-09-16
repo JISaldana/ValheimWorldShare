@@ -201,6 +201,18 @@ function Get-SharedLock {
     return $null
 }
 
+function Get-LockOwnerFromFolder {
+    param([Parameter(Mandatory)][string]$Folder)
+    if ([string]::IsNullOrWhiteSpace($Folder)) {
+        return $null
+    }
+    $lockPath = Join-Path $Folder $script:LockName
+    if (Test-Path -LiteralPath $lockPath -PathType Leaf) {
+        return (Get-Content -LiteralPath $lockPath -Raw -ErrorAction SilentlyContinue).Trim()
+    }
+    return $null
+}
+
 function Wait-FileStable {
     param(
         [Parameter(Mandatory)][string]$Path,
@@ -667,7 +679,6 @@ namespace DriveLauncher {
             }
         }
         if ($script:ChildProcessId -and $null -eq (Get-Process -Id $script:ChildProcessId -ErrorAction SilentlyContinue)) {
-            $timer.Stop()
             $logText = if (Test-Path -LiteralPath $script:ChildLogPath) {
                 Get-Content -LiteralPath $script:ChildLogPath -Raw -ErrorAction SilentlyContinue
             } else { "" }
@@ -681,11 +692,11 @@ namespace DriveLauncher {
             $chooseServer.Enabled = $true
             $create.Enabled = $true
             if ($successful -and -not $failed) {
-                $start.Enabled = $false
-                $status.Text = "Local copy verified. Check cloud sync status."
+                $start.Enabled = $true
+                $status.Text = "Local copy verified. The shared lock was released."
                 $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
                 [Windows.Forms.MessageBox]::Show(
-                    "The files were copied and verified locally. Check your sync provider icon before another player starts.",
+                    "The files were copied and verified locally. The shared lock was released automatically.",
                     "Local copy complete",
                     "OK",
                     "Information"
@@ -699,6 +710,19 @@ namespace DriveLauncher {
                     "OK",
                     "Error"
                 ) | Out-Null
+            }
+            $script:ChildProcessId = $null
+        }
+        if (-not $script:ChildProcessId) {
+            $owner = Get-LockOwnerFromFolder -Folder $folderBox.Text.Trim()
+            if ($null -ne $owner -and $owner.Length -gt 0) {
+                $start.Enabled = $false
+                $status.Text = "Server locked by another player. Start server is disabled."
+                $status.BackColor = [Drawing.Color]::FromArgb(239, 68, 68)
+            } elseif ($start.Enabled -eq $false -and $status.Text -like "*locked*") {
+                $start.Enabled = $true
+                $status.Text = "The shared lock is clear. You can start the server."
+                $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
             }
         }
     })
@@ -724,6 +748,12 @@ namespace DriveLauncher {
             }
             $status.Text = "World list updated. You can type a new world name."
             $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
+            $owner = Get-LockOwnerFromFolder -Folder $folderBox.Text.Trim()
+            if ($null -ne $owner -and $owner.Length -gt 0) {
+                $start.Enabled = $false
+                $status.Text = "Server locked by another player. Start server is disabled."
+                $status.BackColor = [Drawing.Color]::FromArgb(239, 68, 68)
+            }
         } catch {
             [Windows.Forms.MessageBox]::Show($_.Exception.Message, "World list error", "OK", "Error") | Out-Null
         }
@@ -857,6 +887,13 @@ namespace DriveLauncher {
     })
     $form.Add_Shown({
         $refreshWorlds.PerformClick()
+        $timer.Start()
+        $owner = Get-LockOwnerFromFolder -Folder $folderBox.Text.Trim()
+        if ($null -ne $owner -and $owner.Length -gt 0) {
+            $start.Enabled = $false
+            $status.Text = "Server locked by another player. Start server is disabled."
+            $status.BackColor = [Drawing.Color]::FromArgb(239, 68, 68)
+        }
     })
     [void]$form.ShowDialog()
 }
