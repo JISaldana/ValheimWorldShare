@@ -6,7 +6,10 @@ param(
     [string]$WorldName = "Dedicated",
     [string]$ServerExecutable = "${env:ProgramFiles(x86)}\Steam\steamapps\common\Valheim dedicated server\valheim_server.exe",
     [string]$WorldDirectory = "$env:USERPROFILE\AppData\LocalLow\IronGate\Valheim\worlds_local",
-    [string]$SessionLogPath = ""
+    [string]$SessionLogPath = "",
+    [string]$ServerName = "Valheim World Share",
+    [string]$ServerPassword = "valheim",
+    [int]$ServerPort = 2456
 )
 
 Set-StrictMode -Version Latest
@@ -19,6 +22,9 @@ if (-not $PSBoundParameters.ContainsKey("DriveFolder") -and (Test-Path -LiteralP
         if ($savedConfig.DriveFolder) { $DriveFolder = [string]$savedConfig.DriveFolder }
         if ($savedConfig.WorldName) { $WorldName = [string]$savedConfig.WorldName }
         if ($savedConfig.ServerExecutable) { $ServerExecutable = [string]$savedConfig.ServerExecutable }
+        if ($savedConfig.ServerName) { $ServerName = [string]$savedConfig.ServerName }
+        if ($savedConfig.ServerPassword) { $ServerPassword = [string]$savedConfig.ServerPassword }
+        if ($savedConfig.ServerPort) { $ServerPort = [int]$savedConfig.ServerPort }
     } catch {
         Write-Warning "No se pudo leer la configuracion local."
     }
@@ -45,7 +51,27 @@ function Save-DriveConfig {
         DriveFolder = $DriveFolder
         WorldName = $WorldName
         ServerExecutable = $script:ServerExecutable
+        ServerName = $ServerName
+        ServerPassword = $ServerPassword
+        ServerPort = $ServerPort
     } | ConvertTo-Json | Set-Content -LiteralPath $script:ConfigPath -Encoding ASCII
+}
+
+function Find-ServerExecutable {
+    $candidates = @(
+        $ServerExecutable,
+        "${env:ProgramFiles(x86)}\Steam\steamapps\common\Valheim dedicated server\valheim_server.exe",
+        "${env:ProgramFiles}\Steam\steamapps\common\Valheim dedicated server\valheim_server.exe",
+        "C:\Steam\steamapps\common\Valheim dedicated server\valheim_server.exe",
+        "F:\Steam\steamapps\common\Valheim dedicated server\valheim_server.exe",
+        "G:\Steam\steamapps\common\Valheim dedicated server\valheim_server.exe"
+    )
+    foreach ($candidate in $candidates | Select-Object -Unique) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+            return (Resolve-Path -LiteralPath $candidate).Path
+        }
+    }
+    return $null
 }
 
 function Test-DriveFolder {
@@ -205,9 +231,12 @@ function Get-AvailableWorldNames {
 
 function Start-DriveSession {
     Test-DriveFolder | Out-Null
-    if (-not (Test-Path -LiteralPath $ServerExecutable -PathType Leaf)) {
-        throw "No se encontro el ejecutable del servidor: $ServerExecutable"
+    $detectedServer = Find-ServerExecutable
+    if ($null -eq $detectedServer) {
+        throw "No se encontro valheim_server.exe. Usa Choose server para seleccionarlo."
     }
+    $script:ServerExecutable = $detectedServer
+    $ServerExecutable = $detectedServer
     $lockOwner = Get-SharedLock
     if ($null -ne $lockOwner -and $lockOwner.Length -gt 0) {
         throw "El servidor esta siendo usado por: $lockOwner"
@@ -218,11 +247,26 @@ function Start-DriveSession {
     $sessionStarted = $false
     try {
         Write-DriveLog "Iniciando Valheim para el mundo $WorldName."
+        $serverOutputLog = "$script:ChildLogPath.server.out.txt"
+        $serverErrorLog = "$script:ChildLogPath.server.err.txt"
         $serverProcess = Start-Process -FilePath $ServerExecutable -ArgumentList @(
-            "-nographics", "-batchmode", "-world", $WorldName
-        ) -PassThru
+            "-nographics", "-batchmode", "-name", $ServerName, "-port", $ServerPort,
+            "-world", $WorldName, "-password", $ServerPassword, "-public", "0"
+        ) -WorkingDirectory (Split-Path -Parent $ServerExecutable) -RedirectStandardOutput $serverOutputLog -RedirectStandardError $serverErrorLog -PassThru
         $sessionStarted = $true
         Wait-Process -Id $serverProcess.Id
+        if (Test-Path -LiteralPath $serverOutputLog) {
+            $serverOutput = Get-Content -LiteralPath $serverOutputLog -Raw -ErrorAction SilentlyContinue
+            if ($serverOutput) {
+                Write-DriveLog "Salida del servidor:`n$serverOutput"
+            }
+        }
+        if (Test-Path -LiteralPath $serverErrorLog) {
+            $serverError = Get-Content -LiteralPath $serverErrorLog -Raw -ErrorAction SilentlyContinue
+            if ($serverError) {
+                Write-DriveLog "Errores del servidor:`n$serverError"
+            }
+        }
         Upload-WorldToDrive
     } finally {
         if ($null -ne $serverProcess -and -not $serverProcess.HasExited) {
@@ -320,6 +364,10 @@ function Start-DriveGui {
     $start.Text = "Start server"
     $start.Width = 130
     $start.Height = 34
+    $create = New-Object Windows.Forms.Button
+    $create.Text = "Create world"
+    $create.Width = 120
+    $create.Height = 34
     $release = New-Object Windows.Forms.Button
     $release.Text = "Release lock"
     $release.Width = 120
@@ -339,6 +387,7 @@ function Start-DriveGui {
     $actions.Controls.Add($choose)
     $actions.Controls.Add($test)
     $actions.Controls.Add($start)
+    $actions.Controls.Add($create)
     $actions.Controls.Add($upload)
     $actions.Controls.Add($release)
     $actions.Controls.Add($refreshWorlds)
@@ -414,6 +463,7 @@ function Start-DriveGui {
         $dialog.FileName = "valheim_server.exe"
         if ($dialog.ShowDialog() -eq "OK") {
             $script:ServerExecutable = $dialog.FileName
+            Save-DriveConfig
             $status.Text = "Server executable selected."
             $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
         }
@@ -443,7 +493,7 @@ function Start-DriveGui {
             $choose.Enabled = $false
             $test.Enabled = $false
             $script:ChildLogPath = Join-Path $PSScriptRoot "logs\drive-session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
-            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`""
+            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$ServerName`" -ServerPassword `"$ServerPassword`" -ServerPort $ServerPort"
             $script:ChildProcessId = (Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru).Id
             $status.Text = "Sync and server session running."
             $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
@@ -451,6 +501,19 @@ function Start-DriveGui {
         } catch {
             $start.Enabled = $true
             [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Start error", "OK", "Error") | Out-Null
+        }
+    })
+    $create.Add_Click({
+        if ([string]::IsNullOrWhiteSpace($worldBox.Text)) {
+            [Windows.Forms.MessageBox]::Show("Escribe un nombre para el mundo nuevo.", "Create world", "OK", "Warning") | Out-Null
+            return
+        }
+        if ([Windows.Forms.MessageBox]::Show(
+                "Se creara el mundo '$($worldBox.Text)' si no existe. El servidor se iniciara ahora.",
+                "Create world",
+                "YesNo",
+                "Question") -eq "Yes") {
+            $start.PerformClick()
         }
     })
     $upload.Add_Click({
@@ -468,6 +531,7 @@ function Start-DriveGui {
             $test.Enabled = $false
             $refreshWorlds.Enabled = $false
             $chooseServer.Enabled = $false
+            $create.Enabled = $false
             $script:ChildLogPath = Join-Path $PSScriptRoot "logs\drive-upload-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
             $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -UploadOnly"
             $script:ChildProcessId = (Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru).Id
@@ -489,6 +553,7 @@ function Start-DriveGui {
                 $upload.Enabled = $true
                 $refreshWorlds.Enabled = $true
                 $chooseServer.Enabled = $true
+                $create.Enabled = $true
                 $release.Enabled = $true
                 $status.Text = "Shared lock removed."
                 $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
