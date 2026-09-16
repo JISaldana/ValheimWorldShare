@@ -58,6 +58,10 @@ Para usuarios que no quieran configurar rclone, ejecuta:
 .\launch_valheim_drive.ps1
 ```
 
+Tambien puedes abrir `ValheimWorldShare.exe` con doble click. El ejecutable
+debe estar en la misma carpeta que `launch_valheim_drive.ps1`. Si Windows
+bloquea el archivo, usa `ValheimWorldShare.cmd` como alternativa.
+
 Instala Google Drive para escritorio, inicia sesion y marca la carpeta
 compartida como disponible sin conexion. La carpeta puede estar en una unidad
 montada como `G:\` o en cualquier otra ruta local sincronizada. En la interfaz

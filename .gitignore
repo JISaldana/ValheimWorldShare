@@ -2,6 +2,9 @@
 .tools/
 launcher.config.json
 drive-launcher.config.json
+bin/
+obj/
+dist/
 
 # Logs y copias de seguridad de mundos
 logs/
