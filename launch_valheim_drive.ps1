@@ -238,7 +238,11 @@ function Sync-WorldFromDrive {
     }
     $sharedUploadedAt = if ($hasSharedWorld) { Read-WorldUploadedAt -WorldPath $sharedWorld } else { $null }
     $localUploadedAt = if ($hasLocalWorld) { Read-WorldUploadedAt -WorldPath $localWorld } else { $null }
-    $useShared = $hasSharedWorld -and (-not $hasLocalWorld -or $null -ne $sharedUploadedAt -and ($null -eq $localUploadedAt -or $sharedUploadedAt -ge $localUploadedAt))
+    $useShared = $hasSharedWorld -and (
+        -not $hasLocalWorld -or
+        $null -eq $localUploadedAt -or
+        $null -ne $sharedUploadedAt -and $sharedUploadedAt -ge $localUploadedAt
+    )
     if ($useShared) {
         Write-DriveLog "Usando la copia compartida de '$WorldName' porque es la mas reciente."
     } elseif ($hasLocalWorld) {
@@ -275,6 +279,7 @@ function Copy-AndVerifyDirectory {
 function Upload-WorldToDrive {
     $sharedWorld = Get-SharedWorldDirectory
     $localWorld = Get-LocalWorldDirectory
+    Write-DriveLog "Copiando y verificando el mundo '$WorldName' en la carpeta compartida. Espera hasta que termine."
     Write-WorldManifest -WorldPath $localWorld
     Copy-AndVerifyDirectory -Source $localWorld -Destination $sharedWorld
     Write-DriveLog "Carpeta completa del mundo copiada y verificada: $WorldName."
@@ -285,12 +290,12 @@ function Get-AvailableWorldNames {
     $names = @()
     if (Test-Path -LiteralPath $WorldDirectory -PathType Container) {
         $names += Get-ChildItem -LiteralPath $WorldDirectory -Directory |
-            Where-Object { $_.Name -ne "backups" -and (Get-ChildItem -LiteralPath $_.FullName -File -ErrorAction SilentlyContinue) } |
+            Where-Object { $_.Name -ne "backups" -and (Test-WorldHasFiles -WorldPath $_.FullName) } |
             ForEach-Object { $_.Name }
     }
     if (Test-Path -LiteralPath $DriveFolder -PathType Container) {
         $names += Get-ChildItem -LiteralPath $DriveFolder -Directory -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -ne "backups" -and (Get-ChildItem -LiteralPath $_.FullName -File -ErrorAction SilentlyContinue) } |
+            Where-Object { $_.Name -ne "backups" -and (Test-WorldHasFiles -WorldPath $_.FullName) } |
             ForEach-Object { $_.Name }
     }
     return @($names | Sort-Object -Unique)
@@ -406,7 +411,12 @@ function Start-DriveSession {
             -WorkingDirectory (Split-Path -Parent $ServerExecutable) `
             -RedirectStandardOutput $serverOutputLog -RedirectStandardError $serverErrorLog -PassThru
         $sessionStarted = $true
-        Wait-Process -Id $serverProcess.Id
+        while (-not $serverProcess.HasExited) {
+        Write-DriveLog "Servidor en ejecucion. Manteniendo el bloqueo compartido."
+        Start-Sleep -Seconds 10
+        $serverProcess.Refresh()
+        }
+        Write-DriveLog "El servidor se cerro. Iniciando la copia de archivos; espera hasta que termine."
         if (Test-Path -LiteralPath $serverOutputLog) {
             $serverOutput = Get-Content -LiteralPath $serverOutputLog -Raw -ErrorAction SilentlyContinue
             if ($serverOutput) {
@@ -584,6 +594,20 @@ function Start-DriveGui {
             $log.Text = Get-Content -LiteralPath $script:ChildLogPath -Raw
             $log.SelectionStart = $log.Text.Length
             $log.ScrollToCaret()
+            $currentLog = $log.Text
+            if ($currentLog -match "Copiando y verificando") {
+                $status.Text = "Copiando y verificando archivos. Espera hasta que termine."
+                $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
+            } elseif ($currentLog -match "El servidor se cerro") {
+                $status.Text = "Servidor cerrado. Copiando el mundo; no cierres el programa."
+                $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
+            } elseif ($currentLog -match "Servidor en ejecucion") {
+                $status.Text = "Servidor en ejecucion. Puedes conectarte desde Valheim."
+                $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
+            } elseif ($currentLog -match "Usando la copia") {
+                $status.Text = "Seleccionando la copia mas reciente del mundo."
+                $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
+            }
         }
         if ($script:ChildProcessId -and $null -eq (Get-Process -Id $script:ChildProcessId -ErrorAction SilentlyContinue)) {
             $timer.Stop()
