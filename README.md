@@ -89,12 +89,14 @@ UTC de la ultima subida. Al iniciar, el programa compara esa fecha en la copia
 local y compartida y usa la version mas reciente; si no existe ninguna copia,
 inicia un mundo nuevo. Antes de reemplazar la copia local se crea un backup en
 `worlds_local/backups`.
-Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. Al
+Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. El
+bloqueo se elimina automaticamente cuando termina el servidor y la copia final
+de archivos; no es necesario liberarlo manualmente. Al
 terminar, verifica los hashes de los archivos copiados y avisa cuando la copia
 local esta completa. Como una carpeta generica no permite saber si Dropbox,
 Google Drive u otro proveedor termino la subida remota, el bloqueo permanece
-activo. Revisa el icono de sincronizacion del proveedor y pulsa **Release lock**
-solo cuando indique que todo esta sincronizado.
+activo durante la operacion de copia. Revisa el icono de sincronizacion del
+proveedor antes de que otro jugador inicie una sesion.
 
 El modo rclone permanece disponible en `launch_valheim.ps1` y no comparte
 codigo de configuracion con este modo.

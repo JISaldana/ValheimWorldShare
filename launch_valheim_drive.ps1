@@ -434,6 +434,7 @@ function Start-DriveSession {
     }
     Sync-WorldFromDrive
     New-SharedLock
+    $lockCreated = $true
     $serverProcess = $null
     $sessionStarted = $false
     $previousSteamAppId = $env:SteamAppId
@@ -487,10 +488,9 @@ function Start-DriveSession {
         if ($null -ne $serverProcess -and -not $serverProcess.HasExited) {
             Stop-Process -Id $serverProcess.Id
         }
-        if ($sessionStarted) {
-            Write-DriveLog "El bloqueo permanece activo hasta confirmar la sincronizacion en la nube."
-        } else {
+        if ($lockCreated) {
             Remove-SharedLock
+            Write-DriveLog "Copia finalizada. El bloqueo compartido fue eliminado automaticamente."
         }
     }
 }
@@ -505,7 +505,8 @@ function Start-DriveUpload {
     try {
         Upload-WorldToDrive
     } finally {
-        Write-DriveLog "El bloqueo permanece activo hasta confirmar la sincronizacion en la nube."
+        Remove-SharedLock
+        Write-DriveLog "Subida finalizada. El bloqueo compartido fue eliminado automaticamente."
     }
 }
 
@@ -600,11 +601,6 @@ namespace DriveLauncher {
     $create.Text = "Create world"
     $create.Width = 120
     $create.Height = 34
-    $release = New-Object Windows.Forms.Button
-    $release.Text = "Release lock"
-    $release.Width = 120
-    $release.Height = 34
-    $release.Enabled = $false
     $upload = New-Object Windows.Forms.Button
     $upload.Text = "Upload world"
     $upload.Width = 120
@@ -623,7 +619,6 @@ namespace DriveLauncher {
     $toolTip.SetToolTip($start, "Load the selected world, start the dedicated server, and upload it when the server closes.")
     $toolTip.SetToolTip($create, "Prepare a new world name so the dedicated server can create it.")
     $toolTip.SetToolTip($upload, "Upload the selected local world without starting the server.")
-    $toolTip.SetToolTip($release, "Remove server.lock only after the sync provider confirms that all files are uploaded.")
     $toolTip.SetToolTip($refreshWorlds, "Reload world folders from local and shared storage.")
     $toolTip.SetToolTip($chooseServer, "Select valheim_server.exe if it is not detected automatically.")
     $actions.Controls.Add($choose)
@@ -631,7 +626,6 @@ namespace DriveLauncher {
     $actions.Controls.Add($start)
     $actions.Controls.Add($create)
     $actions.Controls.Add($upload)
-    $actions.Controls.Add($release)
     $actions.Controls.Add($refreshWorlds)
     $actions.Controls.Add($chooseServer)
 
@@ -688,7 +682,6 @@ namespace DriveLauncher {
             $create.Enabled = $true
             if ($successful -and -not $failed) {
                 $start.Enabled = $false
-                $release.Enabled = $true
                 $status.Text = "Local copy verified. Check cloud sync status."
                 $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
                 [Windows.Forms.MessageBox]::Show(
@@ -698,7 +691,6 @@ namespace DriveLauncher {
                     "Information"
                 ) | Out-Null
             } else {
-                $release.Enabled = $false
                 $status.Text = "The session failed. Check the event log."
                 $status.BackColor = [Drawing.Color]::FromArgb(239, 68, 68)
                 [Windows.Forms.MessageBox]::Show(
@@ -843,24 +835,6 @@ namespace DriveLauncher {
             $upload.Enabled = $true
             $start.Enabled = $true
             [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Upload error", "OK", "Error") | Out-Null
-        }
-    })
-    $release.Add_Click({
-        if ([Windows.Forms.MessageBox]::Show("Only release this lock when nobody is playing. Continue?", "Warning", "YesNo", "Warning") -eq "Yes") {
-            try {
-                $script:DriveFolder = $folderBox.Text.Trim()
-                Remove-SharedLock
-                $start.Enabled = $true
-                $upload.Enabled = $true
-                $refreshWorlds.Enabled = $true
-                $chooseServer.Enabled = $true
-                $create.Enabled = $true
-                $release.Enabled = $true
-                $status.Text = "Shared lock removed."
-                $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
-            } catch {
-                [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Release error", "OK", "Error") | Out-Null
-            }
         }
     })
     $form.Add_FormClosing({
