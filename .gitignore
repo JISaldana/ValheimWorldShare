@@ -1,5 +1,6 @@
 # Herramientas descargadas y configuración local
 .tools/
+launcher.config.json
 
 # Logs y copias de seguridad de mundos
 logs/

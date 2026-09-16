@@ -13,6 +13,17 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
+$script:ConfigPath = Join-Path $PSScriptRoot "launcher.config.json"
+if (-not $PSBoundParameters.ContainsKey("Remote") -and (Test-Path -LiteralPath $script:ConfigPath)) {
+    try {
+        $savedConfig = Get-Content -LiteralPath $script:ConfigPath -Raw | ConvertFrom-Json
+        if ($savedConfig.Remote) { $Remote = [string]$savedConfig.Remote }
+        if ($savedConfig.WorldName) { $WorldName = [string]$savedConfig.WorldName }
+    } catch {
+        Write-Warning "No se pudo leer la configuracion local. Se usaran valores por defecto."
+    }
+}
+
 $script:LockName = "server.lock"
 $script:ChildProcessId = $null
 $script:LogPath = Join-Path $PSScriptRoot "logs\launcher.log"
@@ -43,7 +54,7 @@ function Get-RclonePath {
     New-Item -ItemType Directory -Path $toolDirectory -Force | Out-Null
     $archive = Join-Path $toolDirectory "rclone.zip"
     $downloadUrl = "https://downloads.rclone.org/rclone-current-windows-amd64.zip"
-    Write-LauncherLog "rclone no está instalado; descargando la versión portable."
+    Write-LauncherLog "rclone no esta instalado; descargando la version portable."
     Invoke-WebRequest -Uri $downloadUrl -OutFile $archive -UseBasicParsing
     Expand-Archive -LiteralPath $archive -DestinationPath $toolDirectory -Force
     $downloaded = Get-ChildItem -Path $toolDirectory -Filter "rclone.exe" -Recurse | Select-Object -First 1
@@ -56,6 +67,26 @@ function Get-RclonePath {
     return (Resolve-Path -LiteralPath $RclonePath).Path
 }
 
+function Save-LauncherConfig {
+    $config = [ordered]@{
+        Remote = $Remote
+        WorldName = $WorldName
+    }
+    $config | ConvertTo-Json | Set-Content -LiteralPath $script:ConfigPath -Encoding ASCII
+}
+
+function Start-RcloneSetup {
+    param([Parameter(Mandatory)][string]$Executable)
+    Start-Process -FilePath $Executable -ArgumentList "config" -Wait
+}
+
+function Test-RcloneConnection {
+    param([Parameter(Mandatory)][string]$Executable)
+    Invoke-Rclone -Executable $Executable -Arguments @(
+        "lsd", $Remote, "--max-depth", "1", "--timeout", "$NetworkTimeoutSeconds`s"
+    ) | Out-Null
+}
+
 function Invoke-Rclone {
     param(
         [Parameter(Mandatory)][string]$Executable,
@@ -63,7 +94,7 @@ function Invoke-Rclone {
     )
     $output = & $Executable @Arguments 2>&1
     if ($LASTEXITCODE -ne 0) {
-        throw "rclone falló ($LASTEXITCODE): $($output -join [Environment]::NewLine)"
+        throw "rclone fallo ($LASTEXITCODE): $($output -join [Environment]::NewLine)"
     }
     return @($output)
 }
@@ -110,7 +141,7 @@ function Sync-WorldFromRemote {
         }
         $parts = $remoteInfo[0] -split "\s+", 4
         if ($parts.Count -lt 3) {
-            throw "Respuesta inválida de rclone para $remoteFile."
+            throw "Respuesta invalida de rclone para $remoteFile."
         }
         $remoteTimestamp = [DateTime]::Parse("$($parts[1]) $($parts[2])").ToUniversalTime()
         if ($remoteTimestamp -gt $file.LastWriteTimeUtc) {
@@ -150,7 +181,7 @@ function Start-ValheimSession {
     $rclone = Get-RclonePath
     $lockOwner = Get-RemoteLock -Executable $rclone
     if ($null -ne $lockOwner -and $lockOwner.Length -gt 0) {
-        throw "El servidor está siendo hosteado por $lockOwner. Espera a que termine."
+        throw "El servidor esta siendo usado por $lockOwner. Espera a que termine."
     }
 
     Sync-WorldFromRemote -Executable $rclone
@@ -158,14 +189,14 @@ function Start-ValheimSession {
     $serverProcess = $null
     try {
         if (-not (Test-Path -LiteralPath $ServerExecutable -PathType Leaf)) {
-            throw "No se encontró el ejecutable del servidor: $ServerExecutable"
+            throw "No se encontro el ejecutable del servidor: $ServerExecutable"
         }
         Write-LauncherLog "Iniciando Valheim para el mundo $WorldName."
         $serverProcess = Start-Process -FilePath $ServerExecutable -ArgumentList @(
             "-nographics", "-batchmode", "-world", $WorldName
         ) -PassThru
         Wait-Process -Id $serverProcess.Id
-        Write-LauncherLog "El proceso de Valheim terminó; subiendo cambios."
+        Write-LauncherLog "El proceso de Valheim termino; subiendo cambios."
         foreach ($file in Get-WorldFiles) {
             Invoke-Rclone -Executable $rclone -Arguments @(
                 "copyto", $file.FullName, "$Remote/$WorldName/$($file.Name)",
@@ -219,7 +250,7 @@ function Start-LauncherGui {
     $title.ForeColor = [Drawing.Color]::White
     $title.Font = New-Object Drawing.Font("Segoe UI", 14, [Drawing.FontStyle]::Bold)
     $subtitle = New-Object Windows.Forms.Label
-    $subtitle.Text = "Sincronización segura de partidas con Google Drive"
+    $subtitle.Text = "Sincronizacion segura de partidas con Google Drive"
     $subtitle.Dock = "Fill"
     $subtitle.ForeColor = [Drawing.Color]::FromArgb(209, 213, 219)
     $subtitle.Font = New-Object Drawing.Font("Segoe UI", 9)
@@ -248,12 +279,12 @@ function Start-LauncherGui {
     $serverLabel = New-Object Windows.Forms.Label
     $serverLabel.Text = "Ejecutable"
     $serverLabel.TextAlign = "MiddleLeft"
-    $worldValue = New-Object Windows.Forms.Label
+    $worldValue = New-Object Windows.Forms.TextBox
     $worldValue.Text = $WorldName
-    $worldValue.AutoEllipsis = $true
-    $remoteValue = New-Object Windows.Forms.Label
-    $remoteValue.Text = "$Remote/$WorldName"
-    $remoteValue.AutoEllipsis = $true
+    $worldValue.Dock = "Fill"
+    $remoteValue = New-Object Windows.Forms.TextBox
+    $remoteValue.Text = $Remote
+    $remoteValue.Dock = "Fill"
     $serverValue = New-Object Windows.Forms.Label
     $serverValue.Text = $ServerExecutable
     $serverValue.AutoEllipsis = $true
@@ -271,6 +302,14 @@ function Start-LauncherGui {
         $control.Font = New-Object Drawing.Font("Segoe UI", 9)
         $control.ForeColor = [Drawing.Color]::FromArgb(31, 41, 55)
     }
+
+    $setup = New-Object Windows.Forms.Button
+    $setup.Text = "Configurar Google Drive"
+    $setup.Dock = "Top"
+    $setup.Height = 32
+    $setup.FlatStyle = "Flat"
+    $setup.Font = New-Object Drawing.Font("Segoe UI", 9)
+    $setup.BackColor = [Drawing.Color]::FromArgb(219, 234, 254)
 
     $actionPanel = New-Object Windows.Forms.FlowLayoutPanel
     $actionPanel.Dock = "Top"
@@ -302,6 +341,7 @@ function Start-LauncherGui {
     $actionPanel.Controls.Add($start)
     $actionPanel.Controls.Add($release)
     $actionPanel.Controls.Add($refresh)
+    $actionPanel.Controls.Add($setup)
 
     $progress = New-Object Windows.Forms.ProgressBar
     $progress.Dock = "Top"
@@ -354,11 +394,18 @@ function Start-LauncherGui {
             $start.Enabled = $true
             $release.Enabled = $true
             $refresh.Enabled = $true
-            $status.Text = "Sesión finalizada. El mundo se guardó correctamente."
+            $status.Text = "Sesion finalizada. El mundo se guardo correctamente."
             $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
         }
     })
     $start.Add_Click({
+        $script:Remote = $remoteValue.Text.Trim()
+        $script:WorldName = $worldValue.Text.Trim()
+        if ([string]::IsNullOrWhiteSpace($script:Remote) -or [string]::IsNullOrWhiteSpace($script:WorldName)) {
+            [Windows.Forms.MessageBox]::Show("Completa el remoto y el nombre del mundo.", "Datos incompletos", "OK", "Warning") | Out-Null
+            return
+        }
+        Save-LauncherConfig
         $start.Enabled = $false
         $release.Enabled = $false
         $refresh.Enabled = $false
@@ -370,8 +417,25 @@ function Start-LauncherGui {
         $script:ChildProcessId = (Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru).Id
         $timer.Start()
     })
+    $setup.Add_Click({
+        try {
+            $setup.Enabled = $false
+            $status.Text = "Abriendo configuracion de Google Drive..."
+            $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
+            Start-RcloneSetup -Executable (Get-RclonePath)
+            [Windows.Forms.MessageBox]::Show("Configuracion terminada. Pulsa Actualizar estado para probar el acceso.", "Google Drive", "OK", "Information") | Out-Null
+            $status.Text = "Configuracion lista. Pulsa Actualizar estado."
+            $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
+        } catch {
+            $status.Text = "No se pudo configurar Google Drive."
+            $status.BackColor = [Drawing.Color]::FromArgb(239, 68, 68)
+            [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Error de configuracion", "OK", "Error") | Out-Null
+        } finally {
+            $setup.Enabled = $true
+        }
+    })
     $release.Add_Click({
-        if ([Windows.Forms.MessageBox]::Show("Solo libera el bloqueo si confirmaste que nadie está jugando. ¿Continuar?", "Advertencia", "YesNo", "Warning") -eq "Yes") {
+        if ([Windows.Forms.MessageBox]::Show("Solo libera el bloqueo si confirmaste que nadie esta jugando. Continuar?", "Advertencia", "YesNo", "Warning") -eq "Yes") {
             try {
                 Remove-RemoteLock -Executable (Get-RclonePath)
                 $status.Text = "Servidor disponible. Bloqueo liberado."
@@ -383,6 +447,10 @@ function Start-LauncherGui {
     })
     $refresh.Add_Click({
         try {
+            $script:Remote = $remoteValue.Text.Trim()
+            $script:WorldName = $worldValue.Text.Trim()
+            Save-LauncherConfig
+            Test-RcloneConnection -Executable (Get-RclonePath)
             $lockOwner = Get-RemoteLock -Executable (Get-RclonePath)
             if ($null -ne $lockOwner -and $lockOwner.Length -gt 0) {
                 $status.Text = "Servidor ocupado. $lockOwner"
@@ -394,11 +462,25 @@ function Start-LauncherGui {
         } catch {
             $status.Text = "No se pudo consultar el estado remoto."
             $status.BackColor = [Drawing.Color]::FromArgb(245, 158, 11)
-            [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Error de conexión", "OK", "Error") | Out-Null
+            [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Error de conexion", "OK", "Error") | Out-Null
         }
     })
     $form.Add_FormClosing({
         $timer.Stop()
+    })
+    $form.Add_Shown({
+        $rcloneConfig = Join-Path $env:APPDATA "rclone\rclone.conf"
+        if (-not (Test-Path -LiteralPath $rcloneConfig)) {
+            $answer = [Windows.Forms.MessageBox]::Show(
+                "Es la primera ejecucion. Debes conectar tu cuenta de Google Drive. Quieres configurarla ahora?",
+                "Configuracion inicial",
+                "YesNo",
+                "Information"
+            )
+            if ($answer -eq "Yes") {
+                $setup.PerformClick()
+            }
+        }
     })
     [void]$form.ShowDialog()
 }
