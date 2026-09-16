@@ -401,6 +401,8 @@ function Start-DriveGui {
     $form.ClientSize = New-Object Drawing.Size(760, 520)
     $form.StartPosition = "CenterScreen"
     $form.BackColor = [Drawing.Color]::FromArgb(245, 247, 250)
+    $form.MinimumSize = New-Object Drawing.Size(760, 520)
+    $form.AutoScaleMode = [Windows.Forms.AutoScaleMode]::Font
 
     $header = New-Object Windows.Forms.Label
     $header.Text = "VALHEIM WORLD SHARE - GOOGLE DRIVE"
@@ -446,9 +448,9 @@ function Start-DriveGui {
 
     $actions = New-Object Windows.Forms.FlowLayoutPanel
     $actions.Dock = "Top"
-    $actions.Height = 60
+    $actions.Height = 92
     $actions.Padding = New-Object Windows.Forms.Padding(16, 8, 16, 4)
-    $actions.WrapContents = $false
+    $actions.WrapContents = $true
     $choose = New-Object Windows.Forms.Button
     $choose.Text = "Choose folder"
     $choose.Width = 130
@@ -469,6 +471,7 @@ function Start-DriveGui {
     $release.Text = "Release lock"
     $release.Width = 120
     $release.Height = 34
+    $release.Enabled = $false
     $upload = New-Object Windows.Forms.Button
     $upload.Text = "Upload world"
     $upload.Width = 120
@@ -481,6 +484,15 @@ function Start-DriveGui {
     $chooseServer.Text = "Choose server"
     $chooseServer.Width = 120
     $chooseServer.Height = 34
+    $toolTip = New-Object Windows.Forms.ToolTip
+    $toolTip.SetToolTip($choose, "Select the local folder synchronized by Google Drive, Dropbox, OneDrive, or another provider.")
+    $toolTip.SetToolTip($test, "Check that the selected folder is available before starting.")
+    $toolTip.SetToolTip($start, "Load the selected world, start the dedicated server, and upload it when the server closes.")
+    $toolTip.SetToolTip($create, "Prepare a new world name so the dedicated server can create it.")
+    $toolTip.SetToolTip($upload, "Upload the selected local world without starting the server.")
+    $toolTip.SetToolTip($release, "Remove server.lock only after the sync provider confirms that all files are uploaded.")
+    $toolTip.SetToolTip($refreshWorlds, "Reload world folders from local and shared storage.")
+    $toolTip.SetToolTip($chooseServer, "Select valheim_server.exe if it is not detected automatically.")
     $actions.Controls.Add($choose)
     $actions.Controls.Add($test)
     $actions.Controls.Add($start)
