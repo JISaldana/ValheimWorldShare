@@ -17,6 +17,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $script:ConfigPath = Join-Path $PSScriptRoot "drive-launcher.config.json"
+$script:LauncherPath = $PSCommandPath
 if (-not $PSBoundParameters.ContainsKey("DriveFolder") -and (Test-Path -LiteralPath $script:ConfigPath)) {
     try {
         $savedConfig = Get-Content -LiteralPath $script:ConfigPath -Raw | ConvertFrom-Json
@@ -625,8 +626,12 @@ function Start-DriveGui {
             $choose.Enabled = $false
             $test.Enabled = $false
             $script:ChildLogPath = Join-Path $PSScriptRoot "logs\drive-session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
-            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$script:ServerName`" -ServerPassword `"$script:ServerPassword`" -ServerPort $script:ServerPort -Crossplay:`$true"
-            $script:ChildProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru
+            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$script:LauncherPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$script:ServerName`" -ServerPassword `"$script:ServerPassword`" -ServerPort $script:ServerPort -Crossplay:`$true"
+            $launcherOutputLog = "$script:ChildLogPath.launcher.out.txt"
+            $launcherErrorLog = "$script:ChildLogPath.launcher.err.txt"
+            Write-DriveLog "GUI child command: powershell.exe $arguments"
+            $script:ChildProcess = Start-Process -FilePath "powershell.exe" -ArgumentList $arguments `
+                -RedirectStandardOutput $launcherOutputLog -RedirectStandardError $launcherErrorLog -WindowStyle Hidden -PassThru
             $script:ChildProcessId = $script:ChildProcess.Id
             Write-DriveLog "GUI child session started with PID $($script:ChildProcessId)."
             $status.Text = "Sync and server session running."
