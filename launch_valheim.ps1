@@ -14,6 +14,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $script:LockName = "server.lock"
+$script:ChildProcessId = $null
 $script:LogPath = Join-Path $PSScriptRoot "logs\launcher.log"
 $script:ChildLogPath = if ($SessionLogPath) { $SessionLogPath } else {
     Join-Path $PSScriptRoot "logs\session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
@@ -192,35 +193,152 @@ function Start-LauncherGui {
 
     $form = New-Object Windows.Forms.Form
     $form.Text = "Valheim World Share"
-    $form.Size = New-Object Drawing.Size(620, 430)
+    $form.ClientSize = New-Object Drawing.Size(760, 560)
     $form.StartPosition = "CenterScreen"
+    $form.MinimumSize = New-Object Drawing.Size(700, 500)
+    $form.BackColor = [Drawing.Color]::FromArgb(245, 247, 250)
 
     $status = New-Object Windows.Forms.Label
     $status.Text = "Servidor disponible. Haz clic para iniciar."
     $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
-    $status.Dock = "Top"
-    $status.Height = 48
+    $status.Dock = "Fill"
+    $status.Height = 54
     $status.TextAlign = "MiddleCenter"
     $status.Font = New-Object Drawing.Font("Segoe UI", 11, [Drawing.FontStyle]::Bold)
+    $status.ForeColor = [Drawing.Color]::White
+
+    $header = New-Object Windows.Forms.Panel
+    $header.Dock = "Top"
+    $header.Height = 76
+    $header.Padding = New-Object Windows.Forms.Padding(16, 10, 16, 10)
+    $header.BackColor = [Drawing.Color]::FromArgb(31, 41, 55)
+    $title = New-Object Windows.Forms.Label
+    $title.Text = "VALHEIM WORLD SHARE"
+    $title.Dock = "Top"
+    $title.Height = 28
+    $title.ForeColor = [Drawing.Color]::White
+    $title.Font = New-Object Drawing.Font("Segoe UI", 14, [Drawing.FontStyle]::Bold)
+    $subtitle = New-Object Windows.Forms.Label
+    $subtitle.Text = "Sincronización segura de partidas con Google Drive"
+    $subtitle.Dock = "Fill"
+    $subtitle.ForeColor = [Drawing.Color]::FromArgb(209, 213, 219)
+    $subtitle.Font = New-Object Drawing.Font("Segoe UI", 9)
+    $header.Controls.Add($subtitle)
+    $header.Controls.Add($title)
+
+    $details = New-Object Windows.Forms.TableLayoutPanel
+    $details.Dock = "Top"
+    $details.Height = 116
+    $details.Padding = New-Object Windows.Forms.Padding(16, 12, 16, 6)
+    $details.ColumnCount = 2
+    $details.RowCount = 3
+    $details.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Absolute, 130)))
+    $details.ColumnStyles.Add((New-Object Windows.Forms.ColumnStyle([Windows.Forms.SizeType]::Percent, 100)))
+    foreach ($row in 0..2) {
+        $details.RowStyles.Add((New-Object Windows.Forms.RowStyle([Windows.Forms.SizeType]::Absolute, 30)))
+    }
+    $details.BackColor = [Drawing.Color]::White
+
+    $worldLabel = New-Object Windows.Forms.Label
+    $worldLabel.Text = "Mundo"
+    $worldLabel.TextAlign = "MiddleLeft"
+    $remoteLabel = New-Object Windows.Forms.Label
+    $remoteLabel.Text = "Remoto"
+    $remoteLabel.TextAlign = "MiddleLeft"
+    $serverLabel = New-Object Windows.Forms.Label
+    $serverLabel.Text = "Ejecutable"
+    $serverLabel.TextAlign = "MiddleLeft"
+    $worldValue = New-Object Windows.Forms.Label
+    $worldValue.Text = $WorldName
+    $worldValue.AutoEllipsis = $true
+    $remoteValue = New-Object Windows.Forms.Label
+    $remoteValue.Text = "$Remote/$WorldName"
+    $remoteValue.AutoEllipsis = $true
+    $serverValue = New-Object Windows.Forms.Label
+    $serverValue.Text = $ServerExecutable
+    $serverValue.AutoEllipsis = $true
+    $details.Controls.Add($worldLabel, 0, 0)
+    $details.Controls.Add($worldValue, 1, 0)
+    $details.Controls.Add($remoteLabel, 0, 1)
+    $details.Controls.Add($remoteValue, 1, 1)
+    $details.Controls.Add($serverLabel, 0, 2)
+    $details.Controls.Add($serverValue, 1, 2)
+    foreach ($control in @($worldLabel, $remoteLabel, $serverLabel)) {
+        $control.Font = New-Object Drawing.Font("Segoe UI", 9, [Drawing.FontStyle]::Bold)
+        $control.ForeColor = [Drawing.Color]::FromArgb(75, 85, 99)
+    }
+    foreach ($control in @($worldValue, $remoteValue, $serverValue)) {
+        $control.Font = New-Object Drawing.Font("Segoe UI", 9)
+        $control.ForeColor = [Drawing.Color]::FromArgb(31, 41, 55)
+    }
+
+    $actionPanel = New-Object Windows.Forms.FlowLayoutPanel
+    $actionPanel.Dock = "Top"
+    $actionPanel.Height = 72
+    $actionPanel.Padding = New-Object Windows.Forms.Padding(16, 10, 16, 8)
+    $actionPanel.BackColor = [Drawing.Color]::FromArgb(245, 247, 250)
+    $actionPanel.WrapContents = $false
 
     $start = New-Object Windows.Forms.Button
     $start.Text = "Iniciar servidor"
-    $start.Dock = "Top"
-    $start.Height = 42
+    $start.Width = 170
+    $start.Height = 40
+    $start.BackColor = [Drawing.Color]::FromArgb(37, 99, 235)
+    $start.ForeColor = [Drawing.Color]::White
+    $start.FlatStyle = "Flat"
+    $start.Font = New-Object Drawing.Font("Segoe UI", 9, [Drawing.FontStyle]::Bold)
     $release = New-Object Windows.Forms.Button
-    $release.Text = "Liberación manual (riesgo de colisión)"
-    $release.Dock = "Top"
-    $release.Height = 35
+    $release.Text = "Liberar bloqueo"
+    $release.Width = 150
+    $release.Height = 40
+    $release.FlatStyle = "Flat"
+    $release.Font = New-Object Drawing.Font("Segoe UI", 9)
+    $refresh = New-Object Windows.Forms.Button
+    $refresh.Text = "Actualizar estado"
+    $refresh.Width = 145
+    $refresh.Height = 40
+    $refresh.FlatStyle = "Flat"
+    $refresh.Font = New-Object Drawing.Font("Segoe UI", 9)
+    $actionPanel.Controls.Add($start)
+    $actionPanel.Controls.Add($release)
+    $actionPanel.Controls.Add($refresh)
+
+    $progress = New-Object Windows.Forms.ProgressBar
+    $progress.Dock = "Top"
+    $progress.Height = 8
+    $progress.Style = "Marquee"
+    $progress.MarqueeAnimationSpeed = 30
+    $progress.Visible = $false
+
+    $logTitle = New-Object Windows.Forms.Label
+    $logTitle.Text = "EVENTOS DE LA SESION"
+    $logTitle.Dock = "Top"
+    $logTitle.Height = 28
+    $logTitle.Padding = New-Object Windows.Forms.Padding(16, 8, 0, 0)
+    $logTitle.Font = New-Object Drawing.Font("Segoe UI", 8, [Drawing.FontStyle]::Bold)
+    $logTitle.ForeColor = [Drawing.Color]::FromArgb(75, 85, 99)
     $log = New-Object Windows.Forms.TextBox
     $log.Multiline = $true
     $log.ReadOnly = $true
     $log.ScrollBars = "Vertical"
     $log.Dock = "Fill"
+    $log.BackColor = [Drawing.Color]::FromArgb(17, 24, 39)
+    $log.ForeColor = [Drawing.Color]::FromArgb(229, 231, 235)
+    $log.BorderStyle = "None"
     $log.Font = New-Object Drawing.Font("Consolas", 9)
     $form.Controls.Add($log)
-    $form.Controls.Add($release)
-    $form.Controls.Add($start)
-    $form.Controls.Add($status)
+    $form.Controls.Add($logTitle)
+    $form.Controls.Add($progress)
+    $form.Controls.Add($actionPanel)
+    $form.Controls.Add($details)
+    $statusHost = New-Object Windows.Forms.Panel
+    $statusHost.Dock = "Top"
+    $statusHost.Height = 54
+    $statusHost.Padding = New-Object Windows.Forms.Padding(16, 8, 16, 8)
+    $statusHost.BackColor = [Drawing.Color]::FromArgb(245, 247, 250)
+    $statusHost.Controls.Add($status)
+    $form.Controls.Add($statusHost)
+    $form.Controls.Add($header)
 
     $timer = New-Object Windows.Forms.Timer
     $timer.Interval = 1000
@@ -230,15 +348,26 @@ function Start-LauncherGui {
             $log.SelectionStart = $log.Text.Length
             $log.ScrollToCaret()
         }
+        if ($script:ChildProcessId -and $null -eq (Get-Process -Id $script:ChildProcessId -ErrorAction SilentlyContinue)) {
+            $timer.Stop()
+            $progress.Visible = $false
+            $start.Enabled = $true
+            $release.Enabled = $true
+            $refresh.Enabled = $true
+            $status.Text = "Sesión finalizada. El mundo se guardó correctamente."
+            $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
+        }
     })
     $start.Add_Click({
         $start.Enabled = $false
         $release.Enabled = $false
+        $refresh.Enabled = $false
+        $progress.Visible = $true
         $status.Text = "Sincronizando partida... No cierres la ventana."
         $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
         $script:ChildLogPath = Join-Path $PSScriptRoot "logs\session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
         $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -Remote `"$Remote`" -WorldName `"$WorldName`" -ServerExecutable `"$ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -RclonePath `"$RclonePath`" -SessionLogPath `"$script:ChildLogPath`""
-        Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden | Out-Null
+        $script:ChildProcessId = (Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru).Id
         $timer.Start()
     })
     $release.Add_Click({
@@ -251,6 +380,25 @@ function Start-LauncherGui {
                 [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Error", "OK", "Error") | Out-Null
             }
         }
+    })
+    $refresh.Add_Click({
+        try {
+            $lockOwner = Get-RemoteLock -Executable (Get-RclonePath)
+            if ($null -ne $lockOwner -and $lockOwner.Length -gt 0) {
+                $status.Text = "Servidor ocupado. $lockOwner"
+                $status.BackColor = [Drawing.Color]::FromArgb(239, 68, 68)
+            } else {
+                $status.Text = "Servidor disponible. Haz clic para iniciar."
+                $status.BackColor = [Drawing.Color]::FromArgb(34, 197, 94)
+            }
+        } catch {
+            $status.Text = "No se pudo consultar el estado remoto."
+            $status.BackColor = [Drawing.Color]::FromArgb(245, 158, 11)
+            [Windows.Forms.MessageBox]::Show($_.Exception.Message, "Error de conexión", "OK", "Error") | Out-Null
+        }
+    })
+    $form.Add_FormClosing({
+        $timer.Stop()
     })
     [void]$form.ShowDialog()
 }

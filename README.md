@@ -21,6 +21,11 @@ tiempo. Si una sesión se cierra abruptamente, usa **Liberación manual** solo
 después de confirmar que nadie está jugando. Los mundos locales se respaldan
 antes de sobrescribirse y los logs quedan en `logs/`.
 
+La interfaz muestra el mundo, remoto y ejecutable configurados, el estado del
+bloqueo remoto, el progreso de la sesión y una consola de eventos. **Actualizar
+estado** consulta el bloqueo sin iniciar una partida; **Liberar bloqueo** debe
+usarse únicamente después de verificar que ningún jugador está conectado.
+
 El remoto debe ser una ruta de rclone accesible por todos los jugadores, por
 ejemplo `gdrive:valheim-world`. Los archivos `.db` y `.fwl` se guardan dentro
 de una subcarpeta con el nombre del mundo.
