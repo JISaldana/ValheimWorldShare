@@ -37,6 +37,7 @@ $script:ServerExecutable = $ServerExecutable
 $script:LogPath = Join-Path $PSScriptRoot "logs\drive-launcher.log"
 $script:ChildProcessId = $null
 $script:ChildProcess = $null
+$script:ServerOutputLineCounts = @{}
 $script:ChildLogPath = if ($SessionLogPath) { $SessionLogPath } else {
     Join-Path $PSScriptRoot "logs\drive-session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
 }
@@ -47,6 +48,34 @@ function Write-DriveLog {
     Write-Host $line
     New-Item -ItemType Directory -Path (Split-Path -Parent $script:LogPath) -Force | Out-Null
     Add-Content -LiteralPath $script:LogPath -Value $line -Encoding ASCII
+}
+
+function Write-NewServerOutput {
+    param(
+        [Parameter(Mandatory)][string]$Path,
+        [Parameter(Mandatory)][string]$Prefix,
+        [Parameter(Mandatory)][string]$EncodingName
+    )
+    if (-not (Test-Path -LiteralPath $Path -PathType Leaf)) {
+        return
+    }
+    try {
+        $lines = @(Get-Content -LiteralPath $Path -Encoding $EncodingName -ErrorAction Stop)
+        $key = "$Prefix`_$Path"
+        $lastCount = if ($script:ServerOutputLineCounts.ContainsKey($key)) {
+            $script:ServerOutputLineCounts[$key]
+        } else { 0 }
+        if ($lines.Count -gt $lastCount) {
+            for ($index = $lastCount; $index -lt $lines.Count; $index++) {
+                if (-not [string]::IsNullOrWhiteSpace($lines[$index])) {
+                    Write-DriveLog "$Prefix $($lines[$index])"
+                }
+            }
+            $script:ServerOutputLineCounts[$key] = $lines.Count
+        }
+    } catch {
+        Write-DriveLog "$Prefix no disponible temporalmente: $($_.Exception.Message)"
+    }
 }
 
 function Save-DriveConfig {
@@ -409,12 +438,18 @@ function Start-DriveSession {
         }
         $serverProcess = Start-Process -FilePath $ServerExecutable -ArgumentList $serverArguments `
             -WorkingDirectory (Split-Path -Parent $ServerExecutable) `
-            -RedirectStandardOutput $serverOutputLog -RedirectStandardError $serverErrorLog -PassThru
+            -RedirectStandardOutput $serverOutputLog -RedirectStandardError $serverErrorLog -WindowStyle Hidden -PassThru
         $sessionStarted = $true
+        $nextStatusLog = Get-Date
         while (-not $serverProcess.HasExited) {
-        Write-DriveLog "Servidor en ejecucion. Manteniendo el bloqueo compartido."
-        Start-Sleep -Seconds 10
-        $serverProcess.Refresh()
+            Write-NewServerOutput -Path $serverOutputLog -Prefix "Valheim:" -EncodingName Unicode
+            Write-NewServerOutput -Path $serverErrorLog -Prefix "Valheim error:" -EncodingName Unicode
+            if ((Get-Date) -ge $nextStatusLog) {
+                Write-DriveLog "Servidor en ejecucion. Manteniendo el bloqueo compartido."
+                $nextStatusLog = (Get-Date).AddMinutes(10)
+            }
+            Start-Sleep -Seconds 2
+            $serverProcess.Refresh()
         }
         Write-DriveLog "El servidor se cerro. Iniciando la copia de archivos; espera hasta que termine."
         if (Test-Path -LiteralPath $serverOutputLog) {
