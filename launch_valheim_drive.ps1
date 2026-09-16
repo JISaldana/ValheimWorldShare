@@ -230,6 +230,77 @@ function Get-AvailableWorldNames {
     return @($names | Sort-Object -Unique)
 }
 
+function Request-ServerSettings {
+    param([Parameter(Mandatory)]$Owner)
+    $dialog = New-Object Windows.Forms.Form
+    $dialog.Text = "Server settings"
+    $dialog.ClientSize = New-Object Drawing.Size(430, 220)
+    $dialog.StartPosition = "CenterParent"
+    $dialog.FormBorderStyle = "FixedDialog"
+    $dialog.MaximizeBox = $false
+    $dialog.MinimizeBox = $false
+    $dialog.ShowInTaskbar = $false
+
+    $nameLabel = New-Object Windows.Forms.Label
+    $nameLabel.Text = "Server name"
+    $nameLabel.Location = New-Object Drawing.Point(18, 20)
+    $nameLabel.AutoSize = $true
+    $nameBox = New-Object Windows.Forms.TextBox
+    $nameBox.Text = $ServerName
+    $nameBox.Location = New-Object Drawing.Point(150, 16)
+    $nameBox.Width = 250
+
+    $passwordLabel = New-Object Windows.Forms.Label
+    $passwordLabel.Text = "Password (5+ chars)"
+    $passwordLabel.Location = New-Object Drawing.Point(18, 62)
+    $passwordLabel.AutoSize = $true
+    $passwordBox = New-Object Windows.Forms.TextBox
+    $passwordBox.Text = $ServerPassword
+    $passwordBox.UseSystemPasswordChar = $true
+    $passwordBox.Location = New-Object Drawing.Point(150, 58)
+    $passwordBox.Width = 250
+
+    $portLabel = New-Object Windows.Forms.Label
+    $portLabel.Text = "Port"
+    $portLabel.Location = New-Object Drawing.Point(18, 104)
+    $portLabel.AutoSize = $true
+    $portBox = New-Object Windows.Forms.NumericUpDown
+    $portBox.Minimum = 1024
+    $portBox.Maximum = 65535
+    $portBox.Value = $ServerPort
+    $portBox.Location = New-Object Drawing.Point(150, 100)
+    $portBox.Width = 100
+
+    $ok = New-Object Windows.Forms.Button
+    $ok.Text = "Start"
+    $ok.DialogResult = [Windows.Forms.DialogResult]::OK
+    $ok.Location = New-Object Drawing.Point(230, 155)
+    $cancel = New-Object Windows.Forms.Button
+    $cancel.Text = "Cancel"
+    $cancel.DialogResult = [Windows.Forms.DialogResult]::Cancel
+    $cancel.Location = New-Object Drawing.Point(315, 155)
+    $dialog.AcceptButton = $ok
+    $dialog.CancelButton = $cancel
+    $dialog.Controls.AddRange(@($nameLabel, $nameBox, $passwordLabel, $passwordBox, $portLabel, $portBox, $ok, $cancel))
+
+    if ($dialog.ShowDialog($Owner) -ne [Windows.Forms.DialogResult]::OK) {
+        return $false
+    }
+    if ([string]::IsNullOrWhiteSpace($nameBox.Text) -or $passwordBox.Text.Length -lt 5) {
+        [Windows.Forms.MessageBox]::Show("Enter a server name and a password with at least 5 characters.", "Invalid settings", "OK", "Warning") | Out-Null
+        return $false
+    }
+    if ($nameBox.Text -like "*$($passwordBox.Text)*") {
+        [Windows.Forms.MessageBox]::Show("The password cannot be part of the server name.", "Invalid settings", "OK", "Warning") | Out-Null
+        return $false
+    }
+    $script:ServerName = $nameBox.Text.Trim()
+    $script:ServerPassword = $passwordBox.Text
+    $script:ServerPort = [int]$portBox.Value
+    Save-DriveConfig
+    return $true
+}
+
 function Start-DriveSession {
     Test-DriveFolder | Out-Null
     if ($ServerPassword.Length -lt 5) {
@@ -505,15 +576,23 @@ function Start-DriveGui {
     })
     $start.Add_Click({
         try {
+            if (-not (Request-ServerSettings -Owner $form)) {
+                return
+            }
             $script:DriveFolder = $folderBox.Text.Trim()
             $script:WorldName = $worldBox.Text.Trim()
+            $script:ServerExecutable = Find-ServerExecutable
+            if ($null -eq $script:ServerExecutable) {
+                [Windows.Forms.MessageBox]::Show("Server executable not found. Use Choose server first.", "Server not found", "OK", "Warning") | Out-Null
+                return
+            }
             Test-DriveFolder | Out-Null
             Save-DriveConfig
             $start.Enabled = $false
             $choose.Enabled = $false
             $test.Enabled = $false
             $script:ChildLogPath = Join-Path $PSScriptRoot "logs\drive-session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
-            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$ServerName`" -ServerPassword `"$ServerPassword`" -ServerPort $ServerPort -Crossplay:`$true"
+            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$script:ServerName`" -ServerPassword `"$script:ServerPassword`" -ServerPort $script:ServerPort -Crossplay:`$true"
             $script:ChildProcessId = (Start-Process -FilePath "powershell.exe" -ArgumentList $arguments -WindowStyle Hidden -PassThru).Id
             $status.Text = "Sync and server session running."
             $status.BackColor = [Drawing.Color]::FromArgb(59, 130, 246)
