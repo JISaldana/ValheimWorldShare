@@ -84,7 +84,11 @@ internet.
 
 Este modo usa la carpeta local de Google Drive para leer y escribir la carpeta
 completa del mundo, incluidos chunks, bases de datos, metadatos y archivos
-auxiliares.
+auxiliares. Cada mundo incluye un archivo `.worldshare-meta.json` con la fecha
+UTC de la ultima subida. Al iniciar, el programa compara esa fecha en la copia
+local y compartida y usa la version mas reciente; si no existe ninguna copia,
+inicia un mundo nuevo. Antes de reemplazar la copia local se crea un backup en
+`worlds_local/backups`.
 Conserva el mismo archivo `server.lock` para evitar sesiones simultaneas. Al
 terminar, verifica los hashes de los archivos copiados y avisa cuando la copia
 local esta completa. Como una carpeta generica no permite saber si Dropbox,

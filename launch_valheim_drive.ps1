@@ -109,6 +109,48 @@ function Get-SharedWorldDirectory {
     return $sharedWorld
 }
 
+function Get-WorldManifestPath {
+    param([Parameter(Mandatory)][string]$WorldPath)
+    return Join-Path $WorldPath ".worldshare-meta.json"
+}
+
+function Read-WorldUploadedAt {
+    param([Parameter(Mandatory)][string]$WorldPath)
+    $manifestPath = Get-WorldManifestPath -WorldPath $WorldPath
+    if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+        return $null
+    }
+    try {
+        $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
+        if (-not $manifest.UploadedAtUtc) {
+            throw "El manifiesto no contiene UploadedAtUtc: $manifestPath"
+        }
+        return [DateTime]::Parse(
+            [string]$manifest.UploadedAtUtc,
+            [Globalization.CultureInfo]::InvariantCulture,
+            [Globalization.DateTimeStyles]::AssumeUniversal
+        ).ToUniversalTime()
+    } catch {
+        throw "No se pudo leer el manifiesto del mundo '$WorldName': $($_.Exception.Message)"
+    }
+}
+
+function Write-WorldManifest {
+    param([Parameter(Mandatory)][string]$WorldPath)
+    $manifest = [ordered]@{
+        WorldName = $WorldName
+        UploadedAtUtc = [DateTime]::UtcNow.ToString("o")
+        UploadedBy = "$env:COMPUTERNAME\$env:USERNAME"
+    }
+    $manifest | ConvertTo-Json | Set-Content -LiteralPath (Get-WorldManifestPath -WorldPath $WorldPath) -Encoding ASCII
+}
+
+function Test-WorldHasFiles {
+    param([Parameter(Mandatory)][string]$WorldPath)
+    return (Test-Path -LiteralPath $WorldPath -PathType Container) -and
+        $null -ne (Get-ChildItem -LiteralPath $WorldPath -File -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1)
+}
+
 function Get-SharedLock {
     $lockPath = Join-Path (Test-DriveFolder) $script:LockName
     if (Test-Path -LiteralPath $lockPath -PathType Leaf) {
@@ -182,21 +224,38 @@ function Remove-SharedLock {
 }
 
 function Sync-WorldFromDrive {
-    $sharedWorld = Get-SharedWorldDirectory
+    $root = Test-DriveFolder
+    $sharedWorld = Join-Path $root $WorldName
     $backupDirectory = Join-Path $WorldDirectory "backups"
     New-Item -ItemType Directory -Path $backupDirectory -Force | Out-Null
     $localWorld = Get-LocalWorldDirectory -AllowMissing
-    if (-not (Test-Path -LiteralPath $sharedWorld -PathType Container)) {
+    $hasSharedWorld = Test-WorldHasFiles -WorldPath $sharedWorld
+    $hasLocalWorld = Test-WorldHasFiles -WorldPath $localWorld
+    if (-not $hasSharedWorld -and -not $hasLocalWorld) {
+        New-Item -ItemType Directory -Path $localWorld -Force | Out-Null
+        Write-DriveLog "No existe una copia previa para '$WorldName'; se iniciara como mundo nuevo."
         return
     }
-    if (Test-Path -LiteralPath $localWorld -PathType Container) {
+    $sharedUploadedAt = if ($hasSharedWorld) { Read-WorldUploadedAt -WorldPath $sharedWorld } else { $null }
+    $localUploadedAt = if ($hasLocalWorld) { Read-WorldUploadedAt -WorldPath $localWorld } else { $null }
+    $useShared = $hasSharedWorld -and (-not $hasLocalWorld -or $null -ne $sharedUploadedAt -and ($null -eq $localUploadedAt -or $sharedUploadedAt -ge $localUploadedAt))
+    if ($useShared) {
+        Write-DriveLog "Usando la copia compartida de '$WorldName' porque es la mas reciente."
+    } elseif ($hasLocalWorld) {
+        Write-DriveLog "Usando la copia local de '$WorldName' porque es la mas reciente o no hay manifiesto compartido."
+    }
+    if ($useShared) {
         $backupPath = Join-Path $backupDirectory "$WorldName-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss'))"
-        Copy-Item -LiteralPath $localWorld -Destination $backupPath -Recurse -Force
-    } else {
+        if ($hasLocalWorld) {
+            Copy-Item -LiteralPath $localWorld -Destination $backupPath -Recurse -Force
+            Write-DriveLog "Backup local creado antes de descargar '$WorldName'."
+        }
+        New-Item -ItemType Directory -Path $localWorld -Force | Out-Null
+        Copy-AndVerifyDirectory -Source $sharedWorld -Destination $localWorld
+        Write-DriveLog "Copia compartida descargada y verificada: $WorldName."
+    } elseif (-not $hasLocalWorld) {
         New-Item -ItemType Directory -Path $localWorld -Force | Out-Null
     }
-    Copy-AndVerifyDirectory -Source $sharedWorld -Destination $localWorld
-    Write-DriveLog "Carpeta completa del mundo descargada y verificada: $WorldName."
 }
 
 function Copy-AndVerifyDirectory {
@@ -216,6 +275,7 @@ function Copy-AndVerifyDirectory {
 function Upload-WorldToDrive {
     $sharedWorld = Get-SharedWorldDirectory
     $localWorld = Get-LocalWorldDirectory
+    Write-WorldManifest -WorldPath $localWorld
     Copy-AndVerifyDirectory -Source $localWorld -Destination $sharedWorld
     Write-DriveLog "Carpeta completa del mundo copiada y verificada: $WorldName."
     Write-DriveLog "Archivos copiados. Revisa el estado de sincronizacion antes de liberar el bloqueo."
