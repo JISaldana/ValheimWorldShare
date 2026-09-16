@@ -626,7 +626,7 @@ function Start-DriveGui {
             $choose.Enabled = $false
             $test.Enabled = $false
             $script:ChildLogPath = Join-Path $PSScriptRoot "logs\drive-session-$([DateTime]::Now.ToString('yyyyMMdd-HHmmss')).log"
-            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$script:LauncherPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$script:ServerName`" -ServerPassword `"$script:ServerPassword`" -ServerPort $script:ServerPort -Crossplay:`$true"
+            $arguments = "-NoProfile -ExecutionPolicy Bypass -File `"$script:LauncherPath`" -NoGui -DriveFolder `"$script:DriveFolder`" -WorldName `"$script:WorldName`" -ServerExecutable `"$script:ServerExecutable`" -WorldDirectory `"$WorldDirectory`" -SessionLogPath `"$script:ChildLogPath`" -ServerName `"$script:ServerName`" -ServerPassword `"$script:ServerPassword`" -ServerPort $script:ServerPort"
             $launcherOutputLog = "$script:ChildLogPath.launcher.out.txt"
             $launcherErrorLog = "$script:ChildLogPath.launcher.err.txt"
             Write-DriveLog "GUI child command: powershell.exe $arguments"
